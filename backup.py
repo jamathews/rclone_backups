@@ -5,9 +5,12 @@ Perform backups using rclone
 
 import argparse
 import json
+import logging
 import os
 import signal
 import sys
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s: %(levelname)s:\t%(message)s')
 
 
 class Tracker():
@@ -21,10 +24,10 @@ class Tracker():
 
         signal.signal(signal.SIGINT, Tracker._sigint_handler)
         if os.path.isfile(self._filename):
-            print(f"{self._filename} exists, we'll use that for backups")
+            logging.debug(f"{self._filename} exists, we'll use that for backups")
             self._load_from_disk()
         else:
-            print(f"{self._filename} doesn't exist, generating from {self._top_level_sources}")
+            logging.debug(f"{self._filename} doesn't exist, generating from {self._top_level_sources}")
             self.make_fresh_tracker()
             self._save_to_disk()
         if self._interrupt_requested:
@@ -69,10 +72,11 @@ class Tracker():
         next_source = self._tracker["next"]
         sources = self._tracker["sources"]
         while not self._interrupt_requested and (source := sources.get(str(next_source))):
-            print("rclone " + source["path"])
+            logging.info("rclone " + source["path"])
             next_source += 1
             self._tracker["next"] = next_source
             self._save_to_disk()
+        logging.info("done")
 
 
 def main():
