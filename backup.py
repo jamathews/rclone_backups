@@ -10,7 +10,13 @@ import os
 import signal
 import sys
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s: %(levelname)s:\t%(message)s')
+verbosity_to_log_level = {
+    0: logging.CRITICAL,
+    1: logging.ERROR,
+    2: logging.WARNING,
+    3: logging.INFO,
+    4: logging.DEBUG,
+}
 
 
 class Tracker():
@@ -93,7 +99,14 @@ def main():
                         nargs="+",
                         default=[os.getcwd()],
                         )
+    parser.add_argument("-v", "--verbose",
+                        help="verbosity of logging, -v is minimal, -vvvv is verbose",
+                        action='count',
+                        default=0
+                        )
     args = parser.parse_args()
+    logging.basicConfig(level=verbosity_to_log_level.get(args.verbose, 2), format='%(asctime)s: %(levelname)s:\t%(message)s')
+
     tracker_filename = args.tracker
     tracker = Tracker(tracker_filename, args.sources)
     tracker.resume_backups()
