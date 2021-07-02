@@ -22,18 +22,19 @@ verbosity_to_log_level = {
 }
 
 
-class Tracker():
+class BackupTracker:
     _interrupt_requested = False
 
-    def __init__(self, filename, sources, remote_name, bucket_name) -> None:
+    def __init__(self, filename, sources, remote_name, bucket_name, logdir) -> None:
         self._filename = filename
         self._top_level_sources = sources
         self._remote_name = remote_name
         self._bucket_name = bucket_name
+        self._logdir = logdir
         self._detailed_sources = []
         self._tracker = {}
 
-        signal.signal(signal.SIGINT, Tracker._sigint_handler)
+        signal.signal(signal.SIGINT, BackupTracker._sigint_handler)
         if os.path.isfile(self.filename):
             logging.debug(f"{self.filename} exists, we'll use that for backups")
             self._load_from_disk()
@@ -61,15 +62,21 @@ class Tracker():
         return self._bucket_name
 
     @property
+    def logdir(self):
+        os.makedirs(self._logdir, exist_ok=True)
+        return self._logdir
+
+    @property
     def hostname(self):
         return socket.gethostname()
+
     @property
     def dest_prefix(self):
         return f"{self.remote_name}:{self.bucket_name}/{self.hostname}"
 
     @staticmethod
     def _sigint_handler(sig, frame):
-        Tracker._interrupt_requested = True
+        BackupTracker._interrupt_requested = True
 
     def _populate_sources_from_disk(self):
         for source in self.top_level_sources:
@@ -121,6 +128,7 @@ class Tracker():
                 logging.error(error_message)
                 break
         logging.info("done")
+        os.rename(self.filename, os.path.join(self.logdir, f"{datetime.utcnow().isoformat()}-{os.path.basename(self.filename)}"))
 
 
 def main():
@@ -152,11 +160,16 @@ def main():
                         action='count',
                         default=0
                         )
+    parser.add_argument("-l", "--logdir",
+                        help="Directory in which to dump completed logs",
+                        type=str,
+                        default=os.path.join(os.getcwd(), "logs"),
+                        )
     args = parser.parse_args()
     logging.basicConfig(level=verbosity_to_log_level.get(args.verbose, 2), format='%(asctime)s: %(levelname)s:\t%(message)s')
 
     tracker_filename = args.tracker
-    tracker = Tracker(tracker_filename, args.sources, args.remote_name, args.bucket_name)
+    tracker = BackupTracker(tracker_filename, args.sources, args.remote_name, args.bucket_name, args.logdir)
     tracker.resume_backups()
 
 
