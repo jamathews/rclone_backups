@@ -44,6 +44,7 @@ class RestoreTracker(BaseTracker):
                 remote_sources.append(source)
             else:
                 remote_sources = [source]
+            remote_sources.sort(reverse=True, key=lambda x: x.count("/"))
             return remote_sources
         except subprocess.CalledProcessError as exception:
             error_message = f"\n" \

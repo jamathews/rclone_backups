@@ -130,5 +130,4 @@ class BaseTracker(metaclass=ABCMeta):
 
     def save_to_disk(self):
         with open(self.filename, "w") as tracker_file:
-            logging.info(os.getcwd())
             json.dump(self._tracker, tracker_file, indent=2)

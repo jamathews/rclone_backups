@@ -129,3 +129,4 @@ dmypy.json
 .pyre/
 
 logs/
+rclone_tracker.json
