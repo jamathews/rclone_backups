@@ -45,7 +45,7 @@ class BaseTracker(metaclass=ABCMeta):
 
     @property
     def destination(self):
-        if not self._destination[-1] == "/":
+        if self._destination and not self._destination[-1] == "/":
             self._destination += "/"
         return self._destination
 
