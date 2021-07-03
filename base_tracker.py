@@ -44,7 +44,7 @@ class BaseTracker(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def populate_sources(self):
+    def populate_source(self, source):
         raise NotImplementedError
 
     @staticmethod
@@ -54,6 +54,8 @@ class BaseTracker(metaclass=ABCMeta):
 
     @property
     def destination(self):
+        if not self._destination[-1] == "/":
+            self._destination += "/"
         return self._destination
 
     @property
@@ -97,6 +99,12 @@ class BaseTracker(metaclass=ABCMeta):
         }
         self.tracker["next"] = 0
         self.tracker["sources"] = tracker_sources
+
+    def populate_sources(self):
+        detailed_sources = []
+        for source in self.top_level_sources:
+            detailed_sources.extend(self.populate_source(source))
+        return detailed_sources
 
     def resume(self):
         next_source = self.tracker["next"]

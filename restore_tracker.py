@@ -10,7 +10,7 @@ class RestoreTracker(BaseTracker):
 
     @property
     def dest_prefix(self):
-        return f""
+        return f"{self.destination}"
 
     @property
     def source_prefix(self):
@@ -20,13 +20,7 @@ class RestoreTracker(BaseTracker):
     def hostname(self):
         return socket.gethostname()
 
-    def populate_sources(self):
-        detailed_sources = []
-        for source in self.top_level_sources:
-            detailed_sources.extend(self.get_subdirs_for_source(source))
-        return detailed_sources
-
-    def get_subdirs_for_source(self, source):
+    def populate_source(self, source):
         if not source[-1] == "/":
             source += "/"
         get_remote_contents = [

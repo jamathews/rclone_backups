@@ -8,7 +8,7 @@ class BackupTracker(BaseTracker):
 
     @property
     def dest_prefix(self):
-        return f"{self.remote_name}:{self.destination}/{self.hostname}"
+        return f"{self.remote_name}:{self.destination}{self.hostname}"
 
     @property
     def source_prefix(self):
@@ -18,10 +18,9 @@ class BackupTracker(BaseTracker):
     def hostname(self):
         return socket.gethostname()
 
-    def populate_sources(self):
+    def populate_source(self, source):
         detailed_sources = []
-        for source in self.top_level_sources:
-            for root, dirs, _ in os.walk(source, topdown=False, followlinks=False):
-                detailed_sources.extend([os.path.join(root, subdir) for subdir in dirs])
-            detailed_sources.append(source)
+        for root, dirs, _ in os.walk(source, topdown=False, followlinks=False):
+            detailed_sources.extend([os.path.join(root, subdir) for subdir in dirs])
+        detailed_sources.append(source)
         return detailed_sources
