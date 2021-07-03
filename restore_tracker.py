@@ -1,6 +1,5 @@
 import json
 import logging
-import socket
 import subprocess
 
 from base_tracker import BaseTracker
@@ -15,10 +14,6 @@ class RestoreTracker(BaseTracker):
     @property
     def source_prefix(self):
         return f"{self.remote_name}:"
-
-    @property
-    def hostname(self):
-        return socket.gethostname()
 
     def populate_source(self, source):
         if not source[-1] == "/":

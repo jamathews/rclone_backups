@@ -17,19 +17,10 @@ class BaseTracker(metaclass=ABCMeta):
         self._remote_name = remote_name
         self._destination = destination
         self._logdir = logdir
-        self._tracker = {
-            "next": 0,
-            "sources": {},
-        }
+        self._tracker = None
 
         signal.signal(signal.SIGINT, BaseTracker._sigint_handler)
-        if os.path.isfile(self.filename):
-            logging.debug("%s exists, we'll use that for tracking progress", self.filename)
-            self.load_from_disk()
-        else:
-            logging.debug("%s doesn't exist, generating: %s", self.filename, str(self.top_level_sources))
-            self.make_fresh_tracker()
-            self.save_to_disk()
+        self._init_tracker()
         if self._interrupt_requested:
             sys.exit(1)
 
@@ -59,57 +50,50 @@ class BaseTracker(metaclass=ABCMeta):
         return self._destination
 
     @property
-    def filename(self):
-        return self._filename
-
-    @property
-    def interrupt_requested(self):
-        return self._interrupt_requested
-
-    @property
-    def logdir(self):
-        os.makedirs(self._logdir, exist_ok=True)
-        return self._logdir
-
-    @property
     def remote_name(self):
         return self._remote_name
 
-    @property
-    def top_level_sources(self):
-        return self._top_level_sources
-
-    @property
-    def tracker(self):
-        return self._tracker
-
-    def archive_log(self):
-        completed_log = os.path.join(self.logdir, f"{datetime.utcnow().isoformat()}-{os.path.basename(self.filename)}")
-        os.rename(self.filename, completed_log)
+    def _archive_log(self):
+        completed_log = os.path.join(self._logdir, f"{datetime.utcnow().isoformat()}-{os.path.basename(self._filename)}")
+        os.rename(self._filename, completed_log)
         logging.info("Log saved as %s", completed_log)
 
-    def load_from_disk(self):
-        with open(self.filename, "r") as tracker_file:
+    def _init_tracker(self):
+        if os.path.isfile(self._filename):
+            logging.debug("%s exists, we'll use that for tracking progress", self._filename)
+            self._load_from_disk()
+        else:
+            logging.debug("%s doesn't exist, generating: %s", self._filename, str(self._top_level_sources))
+            self._make_fresh_tracker()
+            self._save_to_disk()
+
+    def _load_from_disk(self):
+        with open(self._filename, "r") as tracker_file:
             self._tracker = json.load(tracker_file)
 
-    def make_fresh_tracker(self):
-        detailed_sources = self.populate_sources()
-        tracker_sources = {
-            str(index): {"path": source} for index, source in enumerate(detailed_sources)
+    def _make_fresh_tracker(self):
+        detailed_sources = self._populate_sources()
+        self._tracker = {
+            "next": 0,
+            "sources": {
+                str(index): {"path": source} for index, source in enumerate(detailed_sources)
+            },
         }
-        self.tracker["next"] = 0
-        self.tracker["sources"] = tracker_sources
 
-    def populate_sources(self):
+    def _populate_sources(self):
         detailed_sources = []
-        for source in self.top_level_sources:
+        for source in self._top_level_sources:
             detailed_sources.extend(self.populate_source(source))
         return detailed_sources
 
+    def _save_to_disk(self):
+        with open(self._filename, "w") as tracker_file:
+            json.dump(self._tracker, tracker_file, indent=2)
+
     def resume(self):
-        next_source = self.tracker["next"]
-        sources = self.tracker["sources"]
-        while not self.interrupt_requested and (source := sources.get(str(next_source))):
+        next_source = self._tracker["next"]
+        sources = self._tracker["sources"]
+        while not self._interrupt_requested and (source := sources.get(str(next_source))):
             rclone_command = [
                 'rclone',
                 'copy',
@@ -120,9 +104,9 @@ class BaseTracker(metaclass=ABCMeta):
             try:
                 subprocess.run(rclone_command, capture_output=True, check=True, encoding="ascii")
                 next_source += 1
-                self.tracker["next"] = next_source
+                self._tracker["next"] = next_source
                 source["done"] = datetime.utcnow().isoformat()
-                self.save_to_disk()
+                self._save_to_disk()
             except subprocess.CalledProcessError as exception:
                 error_message = f"\n" \
                                 f"{exception.returncode=}\n" \
@@ -133,9 +117,5 @@ class BaseTracker(metaclass=ABCMeta):
                 logging.error(error_message)
                 break
         else:
-            logging.info("Done rcloning %s", str(self.top_level_sources))
-            self.archive_log()
-
-    def save_to_disk(self):
-        with open(self.filename, "w") as tracker_file:
-            json.dump(self._tracker, tracker_file, indent=2)
+            logging.info("Done rcloning %s", str(self._top_level_sources))
+            self._archive_log()

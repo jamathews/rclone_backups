@@ -8,15 +8,11 @@ class BackupTracker(BaseTracker):
 
     @property
     def dest_prefix(self):
-        return f"{self.remote_name}:{self.destination}{self.hostname}"
+        return f"{self.remote_name}:{self.destination}{socket.gethostname()}"
 
     @property
     def source_prefix(self):
         return f""
-
-    @property
-    def hostname(self):
-        return socket.gethostname()
 
     def populate_source(self, source):
         detailed_sources = []
