@@ -149,7 +149,7 @@ def main():
     parser.add_argument("-b", "--bucket-name",
                         help="The name given to the B2 bucket where backups will be stored",
                         type=str,
-                        required=True,
+                        default="",
                         )
     parser.add_argument("-s", "--sources",
                         help="absolute path[s] to be backed up",
