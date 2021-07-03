@@ -11,11 +11,11 @@ from datetime import datetime
 class BaseTracker(metaclass=ABCMeta):
     _interrupt_requested = False
 
-    def __init__(self, filename, sources, remote_name, bucket_name, logdir) -> None:
+    def __init__(self, filename, sources, remote_name, destination, logdir) -> None:
         self._filename = filename
         self._top_level_sources = sources
         self._remote_name = remote_name
-        self._bucket_name = bucket_name
+        self._destination = destination
         self._logdir = logdir
         self._tracker = {
             "next": 0,
@@ -53,8 +53,8 @@ class BaseTracker(metaclass=ABCMeta):
         BaseTracker._interrupt_requested = True
 
     @property
-    def bucket_name(self):
-        return self._bucket_name
+    def destination(self):
+        return self._destination
 
     @property
     def filename(self):
