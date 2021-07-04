@@ -25,6 +25,7 @@ class RestoreTracker(BaseTracker):
             f"{self.remote_name}:{source}",
         ]
         try:
+            logging.debug(" ".join(get_remote_contents))
             rclone_proc = subprocess.run(get_remote_contents, capture_output=True, check=True, encoding="ascii")
             remote_content = json.loads(rclone_proc.stdout)
             logging.debug(remote_content)
