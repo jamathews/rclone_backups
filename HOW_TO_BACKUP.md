@@ -1,7 +1,15 @@
 # How To Prep For Backups
 
 ## Automated
-run `./configure_rclone_b2.sh`
+1. Set the following environment variables using values you've stored in a password manager:
+```bash
+export ACCOUNTID="..."
+export KEYID="..."
+export CRYPT_REMOTE="..."
+export PASSWORD="..."
+export SALT="..."
+```
+2. Run `./configure_rclone_b2.sh`
 
 ## Manual
 1. [Install `rclone`](https://rclone.org/install/).
@@ -17,6 +25,6 @@ run `./configure_rclone_b2.sh`
 
 # Run a backup
 1. Install `python3.9` or higher
-2. Run `./backup.py --sources "/path/to/important/files" "/path/to/more/important/files" --remote-name [remote name|encrypted remote name] --destination <destination/bucket name on remote>`
+2. Run `./backup.py --backup --remote-name <encrypted remote name> --sources "/path/to/important/files"`            
 
 Run `./backup.py --help` for more options.
