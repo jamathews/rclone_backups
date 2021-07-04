@@ -10,22 +10,22 @@ if [[ -z ${ACCOUNTID} ]]; then
 fi
 
 if [[ -z ${KEYID} ]]; then
-    echo "\KEYID is not defined. Please set this environment variable. Check your password manager for the correct value."
+    echo "\$KEYID is not defined. Please set this environment variable. Check your password manager for the correct value."
     exit 1
 fi
 
 if [[ -z ${CRYPT_REMOTE} ]]; then
-    echo "\CRYPT_REMOTE is not defined. Please set this environment variable. Check your password manager for the correct value."
+    echo "\$CRYPT_REMOTE is not defined. Please set this environment variable. Check your password manager for the correct value."
     exit 1
 fi
 
 if [[ -z ${PASSWORD} ]]; then
-    echo "\PASSWORD is not defined. Please set this environment variable. Check your password manager for the correct value."
+    echo "\$PASSWORD is not defined. Please set this environment variable. Check your password manager for the correct value."
     exit 1
 fi
 
 if [[ -z ${SALT} ]]; then
-    echo "\SALT is not defined. Please set this environment variable. Check your password manager for the correct value."
+    echo "\$SALT is not defined. Please set this environment variable. Check your password manager for the correct value."
     exit 1
 fi
 
