@@ -94,7 +94,7 @@ class BaseTracker(metaclass=ABCMeta):
     def resume(self):
         next_source = self._tracker["next"]
         sources = self._tracker["sources"]
-        while not self._interrupt_requested and (source := sources.get(str(next_source))):
+        while (source := sources.get(str(next_source))) and not self._interrupt_requested:
             rclone_command = [
                 'rclone',
                 'copy',
@@ -104,10 +104,7 @@ class BaseTracker(metaclass=ABCMeta):
             logging.info(" ".join(rclone_command))
             try:
                 subprocess.run(rclone_command, capture_output=True, check=True, encoding="ascii")
-                next_source += 1
-                self._tracker["next"] = next_source
                 source["done"] = datetime.utcnow().isoformat()
-                self._save_to_disk()
             except subprocess.CalledProcessError as exception:
                 error_message = f"\n" \
                                 f"{exception.returncode=}\n" \
@@ -116,7 +113,19 @@ class BaseTracker(metaclass=ABCMeta):
                                 f"{exception.stdout=}\n" \
                                 f"{exception.stderr=}\n"
                 logging.error(error_message)
-                break
+                source["failure"] = exception.stderr
+                self._tracker["failure_count"] = self._tracker.get("failure_count", 0) + 1
+            finally:
+                next_source += 1
+                self._tracker["next"] = next_source
+                self._save_to_disk()
         else:
-            logging.info("Done rcloning %s", str(self._top_level_sources))
-            self._archive_log()
+            if not source and self._tracker.get("failure_count", 0) == 0:
+                logging.info("Done rcloning %s", str(self._top_level_sources))
+                self._archive_log()
+            else:
+                failures = [source for _, source in self._tracker["sources"].items() if source.get("failure") is not None]
+                logging.error("Failures: %d\n\n%s",
+                              self._tracker.get("failure_count", 0),
+                              json.dumps(failures, indent=2),
+                              )
