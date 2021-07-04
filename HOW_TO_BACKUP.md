@@ -1,28 +1,22 @@
 # How To Prep For Backups
 
-- install `rclone`
-- `rclone config`
-    - "New remote"
-    - name: "b2"
-    - key ID and Application Key as stored in password manager
-- create a bucket in B2 web interface
+## Automated
+run `./configure_rclone_b2.sh`
+
+## Manual
+1. [Install `rclone`](https://rclone.org/install/).
+1. Run `rclone config` Create a new remote of the appropriate type for the cloud storage you want 
+   to use. Provide the requested credentials.
 
 ## Optionally Make a Crypt Remote if you want files to be encrypted
- 
-- `rclone config`
-  - "New remote"
-  - name: "b2crypt"
-  - Storage type: crypt
-  - remote to encrypt/decrypt: "b2:/my-bucket"
-  - filename_encryption: off
-  - directory_name_encryption: false
-  - password and salt: as stored in your password manager
-  
- 
-TODO: rclone config, Set configuration password
+1. Run `rclone config`. Create a new remote of type `crypt`. When prompted for the remote to 
+   encrypt, give it the remote name from the previous step.
+1. Set `filename_encryption` to `off`
+1. Set `directory_name_encryption` to `false`
+1. Provide a password and salt when prompted.
 
 # Run a backup
+1. Install `python3.9` or higher
+2. Run `./backup.py --sources "/path/to/important/files" "/path/to/more/important/files" --remote-name [remote name|encrypted remote name] --destination <destination/bucket name on remote>`
 
-`./backup.py --sources "/path/to/important/files" "/path/to/more/important/files" --remote-name b2crypt --bucket-name my-bucket`
-
-
+Run `./backup.py --help` for more options.
