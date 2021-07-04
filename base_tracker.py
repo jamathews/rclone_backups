@@ -54,6 +54,7 @@ class BaseTracker(metaclass=ABCMeta):
         return self._remote_name
 
     def _archive_log(self):
+        os.makedirs(self._logdir, exist_ok=True)
         completed_log = os.path.join(self._logdir, f"{datetime.utcnow().isoformat()}-{os.path.basename(self._filename)}")
         os.rename(self._filename, completed_log)
         logging.info("Log saved as %s", completed_log)
