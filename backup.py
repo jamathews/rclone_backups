@@ -19,6 +19,10 @@ verbosity_to_log_level = {
 }
 
 
+class UndefinedAction(Exception):
+    pass
+
+
 def main():
     parser = argparse.ArgumentParser()
     action = parser.add_mutually_exclusive_group(required=True)
@@ -70,13 +74,20 @@ def main():
         format='%(asctime)s: %(levelname)s:\t%(message)s',
     )
 
-    tracker_filename = args.tracker
     if args.backup:
-        tracker = BackupTracker(tracker_filename, args.sources, args.remote_name, args.destination, args.logdir)
-        tracker.resume()
-    if args.restore:
-        tracker = RestoreTracker(tracker_filename, args.sources, args.remote_name, args.destination, args.logdir)
-        tracker.resume()
+        tracker_class = BackupTracker
+    elif args.restore:
+        tracker_class = RestoreTracker
+    else:
+        raise UndefinedAction
+    tracker = tracker_class(filename=args.tracker,
+                            sources=args.sources,
+                            remote_name=args.remote_name,
+                            destination=args.destination,
+                            logdir=args.logdir,
+                            verbosity=(args.verbose - 2),
+                            )
+    tracker.resume()
 
 
 if __name__ == '__main__':

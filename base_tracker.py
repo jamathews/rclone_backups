@@ -11,12 +11,13 @@ from datetime import datetime
 class BaseTracker(metaclass=ABCMeta):
     _interrupt_requested = False
 
-    def __init__(self, filename, sources, remote_name, destination, logdir) -> None:
+    def __init__(self, filename, sources, remote_name, destination, logdir, verbosity=0) -> None:
         self._filename = filename
         self._top_level_sources = sources
         self._remote_name = remote_name
         self._destination = destination
         self._logdir = logdir
+        self._verbosity = verbosity
         self._tracker = None
 
         signal.signal(signal.SIGINT, BaseTracker._sigint_handler)
@@ -95,16 +96,26 @@ class BaseTracker(metaclass=ABCMeta):
         next_source = self._tracker["next"]
         sources = self._tracker["sources"]
         while (source := sources.get(str(next_source))) and not self._interrupt_requested:
+            logging.info(source["path"])
             rclone_command = [
                 'rclone',
                 'copy',
                 f'{self.source_prefix}{source["path"]}',
                 f'{self.dest_prefix}{source["path"]}',
             ]
-            logging.info(" ".join(rclone_command))
+            if self._verbosity:
+                rclone_command.append(f"-{'v' * self._verbosity}")
+            logging.debug(" ".join(rclone_command))
             try:
-                subprocess.run(rclone_command, capture_output=True, check=True, encoding="ascii")
+                rclone = subprocess.run(rclone_command, capture_output=True, check=True, text=True)
+                logging.debug("stdout:\n" + rclone.stdout)
+                logging.debug("stderr:\n" + rclone.stderr)
                 source["done"] = datetime.utcnow().isoformat()
+                if self._verbosity >= 2:
+                    source["args"] = rclone.args
+                    source["returncode"] = rclone.returncode
+                    source["stdout"] = rclone.stdout
+                    source["stderr"] = rclone.stderr
             except subprocess.CalledProcessError as exception:
                 error_message = f"\n" \
                                 f"{exception.returncode=}\n" \
