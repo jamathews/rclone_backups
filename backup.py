@@ -33,7 +33,6 @@ class UndefinedAction(Exception):
 
 def logging_setup(args):
     log_level = verbosity_to_log_level(args.verbose)
-    # log_formatter = logging.Formatter(fmt='[%(asctime)s]: [%(levelname)s]:\t%(message)s')
     log_formatter = logging.Formatter(fmt='%(asctime)s - %(threadName)s - %(name)s - %(levelname)s - %(message)s')
     root_logger = logging.getLogger()
     root_logger.setLevel(level=log_level)
