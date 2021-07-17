@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+
+# Template for /etc/cron.hourly
+
+# Adapted from https://gist.github.com/jpclipffel/0b8f470be029fc9e3f07
+
+# The file which represent the lock.
+LOCKFILE="/var/run/$(basename $0).pid"
+
+# Timeout in seconds.
+TIMEOUT=2
+
+# Create the lockfile.
+touch $LOCKFILE
+
+# Create a file descriptor over the given lockfile.
+exec {FD}<>$LOCKFILE
+
+# Try to lock the file descriptor $FD during $TIMEOUT seconds.
+# If it fails exit with an error.
+# Otherwise, the lock is acquired and implicitely droped at the end of the script.
+if ! flock -x -w $TIMEOUT $FD; then
+  exit 1
+else
+  echo $$ > ${LOCKFILE}
+fi
+
+trap '{ rm -f -- "$LOCKFILE"; }' EXIT
+
+#################################
+# Do the real work of this script
+
+
+export SRC_DIR="/opt/rclone_backups"
+export ACCOUNTID="<redacted>"
+export KEYID="<redacted>"
+export CRYPT_REMOTE="b2:<redacted>/encrypted"
+export PASSWORD="<redacted>"
+export SALT="<redacted>"
+
+ls -1d --quote-name /mnt/<redacted>/* | xargs ${SRC_DIR}/backup.py -vvvvv --backup --tracker /opt/rclone_backups/rclone-backups.json --logdir /var/log/rclone-backups --remote-name b2crypt --sources
+
