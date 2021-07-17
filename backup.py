@@ -6,24 +6,50 @@ Perform backups using rclone
 import argparse
 import logging
 import os
+import pprint
+import sys
+from datetime import datetime
 
 from backup_tracker import BackupTracker
 from restore_tracker import RestoreTracker
 
-verbosity_to_log_level = {
-    0: logging.CRITICAL,
-    1: logging.ERROR,
-    2: logging.WARNING,
-    3: logging.INFO,
-    4: logging.DEBUG,
-}
+
+def verbosity_to_log_level(verbosity=2):
+    if verbosity <= 0:
+        return logging.CRITICAL
+    if verbosity == 1:
+        return logging.ERROR
+    if verbosity == 2:
+        return logging.WARNING
+    if verbosity == 3:
+        return logging.INFO
+    if verbosity >= 4:
+        return logging.DEBUG
 
 
 class UndefinedAction(Exception):
     pass
 
 
-def main():
+def logging_setup(args):
+    log_level = verbosity_to_log_level(args.verbose)
+    # log_formatter = logging.Formatter(fmt='[%(asctime)s]: [%(levelname)s]:\t%(message)s')
+    log_formatter = logging.Formatter(fmt='%(asctime)s - %(threadName)s - %(name)s - %(levelname)s - %(message)s')
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level=log_level)
+
+    file_handler = logging.FileHandler(filename=os.path.join(args.logdir, f"{datetime.utcnow().isoformat()}.log"))
+    file_handler.setFormatter(fmt=log_formatter)
+    file_handler.setLevel(log_level)
+    root_logger.addHandler(file_handler)
+
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(fmt=log_formatter)
+    console_handler.setLevel(log_level)
+    root_logger.addHandler(console_handler)
+
+
+def command_line():
     parser = argparse.ArgumentParser()
     action = parser.add_mutually_exclusive_group(required=True)
     action.title = "Action"
@@ -69,10 +95,13 @@ def main():
                         required=True,
                         )
     args = parser.parse_args()
-    logging.basicConfig(
-        level=verbosity_to_log_level.get(args.verbose, 2),
-        format='%(asctime)s: %(levelname)s:\t%(message)s',
-    )
+    return args
+
+
+def main():
+    args = command_line()
+    logging_setup(args)
+    logging.debug(pprint.pformat(sys.argv))
 
     if args.backup:
         tracker_class = BackupTracker
