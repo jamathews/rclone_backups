@@ -44,6 +44,27 @@ class BaseTracker(metaclass=ABCMeta):
         logging.debug("received signal %s", signal.Signals(sig).name)
         BaseTracker._interrupt_requested = True
 
+    @staticmethod
+    def _bytes_to_str(message: bytes) -> str:
+        if isinstance(message, str):
+            return message
+        encodings = ["utf-8", "ascii"]
+        for encoding in encodings:
+            decoded = BaseTracker._decode(message, encoding)
+            if decoded:
+                return decoded
+        else:
+            return message.hex()
+
+    @staticmethod
+    def _decode(message, encoding):
+        try:
+            decoded = message.decode(encoding=encoding, errors="backslashreplace")
+            return decoded
+        except UnicodeError:
+            logging.exception("Failed to decode bytes to string.")
+            return None
+
     @property
     def destination(self):
         if self._destination and not self._destination[-1] == "/":
@@ -107,15 +128,15 @@ class BaseTracker(metaclass=ABCMeta):
                 rclone_command.append(f"-{'v' * self._verbosity}")
             logging.debug(" ".join(rclone_command))
             try:
-                rclone = subprocess.run(rclone_command, capture_output=True, check=True, text=True)
-                logging.debug("stdout:\n" + rclone.stdout)
-                logging.debug("stderr:\n" + rclone.stderr)
+                rclone = subprocess.run(rclone_command, capture_output=True, check=True)
+                logging.debug("stdout:\n" + self._bytes_to_str(rclone.stdout))
+                logging.debug("stderr:\n" + self._bytes_to_str(rclone.stderr))
                 source["done"] = datetime.utcnow().isoformat()
                 if self._verbosity >= 2:
                     source["args"] = rclone.args
                     source["returncode"] = rclone.returncode
-                    source["stdout"] = rclone.stdout
-                    source["stderr"] = rclone.stderr
+                    source["stdout"] = self._bytes_to_str(rclone.stdout)
+                    source["stderr"] = self._bytes_to_str(rclone.stderr)
             except subprocess.CalledProcessError as exception:
                 error_message = f"\n" \
                                 f"{exception.returncode=}\n" \
@@ -123,8 +144,8 @@ class BaseTracker(metaclass=ABCMeta):
                                 f"{exception.output=}\n" \
                                 f"{exception.stdout=}\n" \
                                 f"{exception.stderr=}\n"
-                logging.error(error_message)
-                source["failure"] = exception.stderr
+                logging.exception(error_message)
+                source["failure"] = self._bytes_to_str(exception.stderr)
                 self._tracker["failure_count"] = self._tracker.get("failure_count", 0) + 1
             finally:
                 next_source += 1
