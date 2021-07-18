@@ -134,6 +134,7 @@ class BaseTracker(metaclass=ABCMeta):
                 source["done"] = datetime.utcnow().isoformat()
                 if self._verbosity >= 2:
                     source["args"] = rclone.args
+                    source["command_line"] = " ".join(["'" + arg + "'" for arg in rclone.args])
                     source["returncode"] = rclone.returncode
                     source["stdout"] = self._bytes_to_str(rclone.stdout)
                     source["stderr"] = self._bytes_to_str(rclone.stderr)
