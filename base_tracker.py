@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import signal
+import sqlite3
 import subprocess
 import sys
 from abc import ABCMeta, abstractmethod
@@ -88,30 +89,54 @@ class BaseTracker(metaclass=ABCMeta):
         else:
             logging.debug("%s doesn't exist, generating: %s", self._filename, str(self._top_level_sources))
             self._make_fresh_tracker()
-            self._save_to_disk()
 
     def _load_from_disk(self):
-        with open(self._filename, "r") as tracker_file:
-            self._tracker = json.load(tracker_file)
+        self._tracker = sqlite3.connect(database=self._filename)
 
     def _make_fresh_tracker(self):
         detailed_sources = self._populate_sources()
-        self._tracker = {
-            "next": 0,
-            "sources": {
-                str(index): {"path": source} for index, source in enumerate(detailed_sources)
-            },
-        }
+
+        self._tracker = sqlite3.connect(database=self._filename)
+        try:
+            with self._tracker:
+                self._tracker.execute("""
+                    CREATE TABLE tracker ( 
+                        key                  text NOT NULL  PRIMARY KEY  ,
+                        value                text     
+                     );
+                 """)
+
+                self._tracker.execute("""
+                    CREATE TABLE sources ( 
+                        id                   bigint NOT NULL  PRIMARY KEY  ,
+                        path                 text NOT NULL    ,
+                        done                 timestamp     ,
+                        args                 text     ,
+                        command_line         text     ,
+                        returncode           integer     ,
+                        stdout               text     ,
+                        stderr               text     
+                     );
+                """)
+
+                self._tracker.execute("""
+                    INSERT INTO tracker
+                        ( key, value) VALUES ( ?, ? );
+                """, ("next", 0))
+
+                self._tracker.executemany("""
+                    INSERT INTO sources
+                        ( id, path) VALUES ( ?, ? );
+                """, enumerate(detailed_sources))
+        except sqlite3.Error as exception:
+            logging.exception(exception)
+            raise RuntimeError("Unable to make fresh tracker database")
 
     def _populate_sources(self):
         detailed_sources = []
         for source in self._top_level_sources:
             detailed_sources.extend(self.populate_source(source))
         return detailed_sources
-
-    def _save_to_disk(self):
-        with open(self._filename, "w") as tracker_file:
-            json.dump(self._tracker, tracker_file, indent=2)
 
     def resume(self):
         next_source = self._tracker["next"]

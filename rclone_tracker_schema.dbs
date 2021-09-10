@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<project name="Sqlite" id="Project_d4d" database="Sqlite" >
+	<schema name="Default" >
+		<table name="sources" >
+			<comment><![CDATA[Locations to be backedup/restored]]></comment>
+			<column name="id" type="bigint" jt="-5" mandatory="y" />
+			<column name="path" type="text" length="4096" jt="-1" mandatory="y" />
+			<column name="done" type="timestamp" jt="93" />
+			<column name="args" type="text" jt="-1" />
+			<column name="command_line" type="text" jt="-1" />
+			<column name="returncode" type="integer" jt="4" />
+			<column name="stdout" type="text" jt="-1" />
+			<column name="stderr" type="text" jt="-1" />
+			<index name="Pk_sources_id" unique="PRIMARY_KEY" >
+				<column name="id" />
+			</index>
+		</table>
+		<table name="tracker" >
+			<comment><![CDATA[Global Tracking Data]]></comment>
+			<column name="key" type="text" length="32" jt="-1" mandatory="y" >
+				<comment><![CDATA[The key for generic key=value pairs]]></comment>
+			</column>
+			<column name="value" type="text" length="1024" jt="-1" >
+				<comment><![CDATA[The value for generic key=value pairs]]></comment>
+			</column>
+			<index name="Pk_tracker_key" unique="PRIMARY_KEY" >
+				<column name="key" />
+			</index>
+		</table>
+	</schema>
+	<connector name="Sqlite" database="Sqlite" driver_class="org.sqlite.JDBC" driver_jar="sqlite-jdbc-3.36.0.1.jar" driver_desc="Standard" host="localhost" port="7210" instance="/Users/jmathews/src/rclone_backups/rclone_tracker.sqlite" />
+	<layout name="Main Layout" id="Layout_c72" show_relation="columns" >
+		<entity schema="Default" name="sources" color="C1D8EE" x="352" y="224" />
+		<entity schema="Default" name="tracker" color="C1D8EE" x="176" y="192" />
+		<callout x="48" y="48" pointer="Round" >
+			<comment><![CDATA[Create new tables by right-clicking the layout (diagram).
+Create multiple layouts with the same or different tables.
+Saving the model to file will also save the layouts and schema structure.]]></comment>
+		</callout>
+		<script name="sources" id="Editor_20f" language="SQL" >
+			<string><![CDATA[CREATE TABLE sources ( 
+	id                   bigint NOT NULL  PRIMARY KEY  ,
+	path                 text NOT NULL    ,
+	done                 timestamp     ,
+	args                 text     ,
+	command_line         text     ,
+	returncode           integer     ,
+	stdout               text     ,
+	stderr               text     
+ );
+]]></string>
+		</script>
+		<script name="sources_001" id="Editor_220d" language="SQL" >
+			<string><![CDATA[INSERT INTO sources
+	( id, path, done, args, command_line, returncode, stdout, stderr) VALUES ( ?, ?, ?, ?, ?, ?, ?, ? );]]></string>
+		</script>
+		<script name="tracker" id="Editor_1506" language="SQL" >
+			<string><![CDATA[CREATE TABLE tracker ( 
+	key                  char(32) NOT NULL  PRIMARY KEY  ,
+	value                char(1024)     
+ );
+]]></string>
+		</script>
+		<script name="tracker_001" id="Editor_523" language="SQL" >
+			<string><![CDATA[INSERT INTO tracker
+	( key, value) VALUES ( ?, ? );]]></string>
+		</script>
+		<script name="tracker_002" id="Editor_1b4c" language="SQL" >
+			<string><![CDATA[CREATE TABLE tracker ( 
+	key                  text NOT NULL  PRIMARY KEY  ,
+	value                text     
+ );
+]]></string>
+		</script>
+	</layout>
+</project>
