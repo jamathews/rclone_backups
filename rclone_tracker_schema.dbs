@@ -11,6 +11,7 @@
 			<column name="returncode" type="integer" jt="4" />
 			<column name="stdout" type="text" jt="-1" />
 			<column name="stderr" type="text" jt="-1" />
+			<column name="failure" type="text" jt="-1" />
 			<index name="Pk_sources_id" unique="PRIMARY_KEY" >
 				<column name="id" />
 			</index>
@@ -20,7 +21,7 @@
 			<column name="key" type="text" length="32" jt="-1" mandatory="y" >
 				<comment><![CDATA[The key for generic key=value pairs]]></comment>
 			</column>
-			<column name="value" type="text" length="1024" jt="-1" >
+			<column name="value" type="bigint" jt="-5" >
 				<comment><![CDATA[The value for generic key=value pairs]]></comment>
 			</column>
 			<index name="Pk_tracker_key" unique="PRIMARY_KEY" >
@@ -28,7 +29,7 @@
 			</index>
 		</table>
 	</schema>
-	<connector name="Sqlite" database="Sqlite" driver_class="org.sqlite.JDBC" driver_jar="sqlite-jdbc-3.36.0.1.jar" driver_desc="Standard" host="localhost" port="7210" instance="/Users/jmathews/src/rclone_backups/rclone_tracker.sqlite" />
+	<connector name="Sqlite" database="Sqlite" driver_class="org.sqlite.JDBC" driver_jar="sqlite-jdbc-3.36.0.1.jar" driver_desc="Standard" host="localhost" port="7210" instance="/Users/jmathews/src/rclone_backups/rclone_tracker.db.sqlite3" />
 	<layout name="Main Layout" id="Layout_c72" show_relation="columns" >
 		<entity schema="Default" name="sources" color="C1D8EE" x="352" y="224" />
 		<entity schema="Default" name="tracker" color="C1D8EE" x="176" y="192" />
@@ -47,19 +48,31 @@ Saving the model to file will also save the layouts and schema structure.]]></co
 	returncode           integer     ,
 	stdout               text     ,
 	stderr               text     
- );
-]]></string>
+ );]]></string>
 		</script>
 		<script name="sources_001" id="Editor_220d" language="SQL" >
 			<string><![CDATA[INSERT INTO sources
 	( id, path, done, args, command_line, returncode, stdout, stderr) VALUES ( ?, ?, ?, ?, ?, ?, ?, ? );]]></string>
 		</script>
+		<script name="sources_002" id="Editor_16be" language="SQL" >
+			<string><![CDATA[CREATE TABLE sources ( 
+	id                   bigint NOT NULL  PRIMARY KEY  ,
+	path                 text NOT NULL    ,
+	done                 timestamp     ,
+	args                 text     ,
+	command_line         text     ,
+	returncode           integer     ,
+	stdout               text     ,
+	stderr               text     ,
+	failure              text     
+ );
+]]></string>
+		</script>
 		<script name="tracker" id="Editor_1506" language="SQL" >
 			<string><![CDATA[CREATE TABLE tracker ( 
 	key                  char(32) NOT NULL  PRIMARY KEY  ,
 	value                char(1024)     
- );
-]]></string>
+ );]]></string>
 		</script>
 		<script name="tracker_001" id="Editor_523" language="SQL" >
 			<string><![CDATA[INSERT INTO tracker
@@ -69,6 +82,17 @@ Saving the model to file will also save the layouts and schema structure.]]></co
 			<string><![CDATA[CREATE TABLE tracker ( 
 	key                  text NOT NULL  PRIMARY KEY  ,
 	value                text     
+ );]]></string>
+		</script>
+		<script name="tracker_003" id="Editor_14f1" language="SQL" >
+			<string><![CDATA[SELECT key, value
+FROM
+	tracker r;]]></string>
+		</script>
+		<script name="tracker_004" id="Editor_21d7" language="SQL" >
+			<string><![CDATA[CREATE TABLE tracker ( 
+	key                  text NOT NULL  PRIMARY KEY  ,
+	value                bigint     
  );
 ]]></string>
 		</script>

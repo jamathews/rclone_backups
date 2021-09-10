@@ -102,7 +102,7 @@ class BaseTracker(metaclass=ABCMeta):
                 self._tracker.execute("""
                     CREATE TABLE tracker ( 
                         key                  text NOT NULL  PRIMARY KEY  ,
-                        value                text     
+                        value                bigint     
                      );
                  """)
 
@@ -115,7 +115,8 @@ class BaseTracker(metaclass=ABCMeta):
                         command_line         text     ,
                         returncode           integer     ,
                         stdout               text     ,
-                        stderr               text     
+                        stderr               text     ,
+                        failure              text     
                      );
                 """)
 
@@ -139,30 +140,52 @@ class BaseTracker(metaclass=ABCMeta):
         return detailed_sources
 
     def resume(self):
-        next_source = self._tracker["next"]
-        sources = self._tracker["sources"]
-        while (source := sources.get(str(next_source))) and not self._interrupt_requested:
-            logging.info(source["path"])
+        try:
+            tracker_next_record = self._tracker.execute("""
+                SELECT value FROM tracker WHERE key = :value;
+            """, {"value": "next"}).fetchone()
+            if tracker_next_record is None:
+                logging.critical("tracker_next_record is None")
+                raise RuntimeError("Data error: 'next' should always return exactly 1 record")
+            next_source = tracker_next_record[0]
+        except sqlite3.Error as exception:
+            logging.exception(exception)
+            raise RuntimeError("Unable to determine 'next' source")
+        source = self._tracker.execute("""
+            SELECT path FROM sources WHERE id = :id;
+        """, {"id": next_source}).fetchone()
+        while source and not self._interrupt_requested:
+            source_path = source[0]
+            logging.info(source_path)
             rclone_command = [
                 'rclone',
                 'copy',
-                f'{self.source_prefix}{source["path"]}',
-                f'{self.dest_prefix}{source["path"]}',
+                f'{self.source_prefix}{source_path}',
+                f'{self.dest_prefix}{source_path}',
             ]
             if self._verbosity:
                 rclone_command.append(f"-{'v' * self._verbosity}")
             logging.debug(" ".join(rclone_command))
+            result = {
+                "done": None,
+                "args": None,
+                "command_line": None,
+                "returncode": None,
+                "stdout": None,
+                "stderr": None,
+                "failure": None,
+            }
             try:
                 rclone = subprocess.run(rclone_command, capture_output=True, check=True)
                 logging.debug("stdout:\n" + self._bytes_to_str(rclone.stdout))
                 logging.debug("stderr:\n" + self._bytes_to_str(rclone.stderr))
-                source["done"] = datetime.utcnow().isoformat()
+                result["done"] = datetime.utcnow().isoformat()
                 if self._verbosity >= 2:
-                    source["args"] = rclone.args
-                    source["command_line"] = " ".join(["'" + arg + "'" for arg in rclone.args])
-                    source["returncode"] = rclone.returncode
-                    source["stdout"] = self._bytes_to_str(rclone.stdout)
-                    source["stderr"] = self._bytes_to_str(rclone.stderr)
+                    result["args"] = rclone.args
+                    result["command_line"] = " ".join(["'" + arg + "'" for arg in rclone.args])
+                    result["returncode"] = rclone.returncode
+                    result["stdout"] = self._bytes_to_str(rclone.stdout)
+                    result["stderr"] = self._bytes_to_str(rclone.stderr)
             except subprocess.CalledProcessError as exception:
                 error_message = f"\n" \
                                 f"{exception.returncode=}\n" \
@@ -171,7 +194,7 @@ class BaseTracker(metaclass=ABCMeta):
                                 f"{exception.stdout=}\n" \
                                 f"{exception.stderr=}\n"
                 logging.exception(error_message)
-                source["failure"] = self._bytes_to_str(exception.stderr)
+                result["failure"] = self._bytes_to_str(exception.stderr)
                 self._tracker["failure_count"] = self._tracker.get("failure_count", 0) + 1
             finally:
                 next_source += 1
