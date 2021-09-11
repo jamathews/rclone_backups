@@ -38,5 +38,5 @@ export CRYPT_REMOTE="b2:<redacted>/encrypted"
 export PASSWORD="<redacted>"
 export SALT="<redacted>"
 
-ls -1d --quote-name /mnt/<redacted>/* | xargs ${SRC_DIR}/backup.py -vvvvv --backup --tracker /opt/rclone_backups/rclone-backups.json --logdir /var/log/rclone-backups --remote-name b2crypt --sources
+ls -1d --quote-name /mnt/<redacted>/* | xargs ${SRC_DIR}/backup.py -vvvvv --backup --tracker /opt/rclone_backups/rclone-backups.db.sqlite3 --logdir /var/log/rclone-backups --remote-name b2crypt --sources
 
