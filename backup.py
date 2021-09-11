@@ -61,6 +61,11 @@ def command_line():
                         help="Perform a restore",
                         action="store_true",
                         )
+    parser.add_argument("--retry",
+                        help="Reset the tracker to the beginning and retry anything that didn't "
+                             "complete successsfully.",
+                        action="store_true",
+                        )
     parser.add_argument("-t", "--tracker",
                         help="progress tracking file to support resuming after interruption",
                         type=str,
@@ -115,6 +120,7 @@ def main():
                             destination=args.destination,
                             logdir=args.logdir,
                             verbosity=(args.verbose - 2),
+                            retry=args.retry,
                             )
     tracker.resume()
 

@@ -11,7 +11,7 @@ from datetime import datetime
 class BaseTracker(metaclass=ABCMeta):
     _interrupt_requested = False
 
-    def __init__(self, filename, sources, remote_name, destination, logdir, verbosity=0) -> None:
+    def __init__(self, filename, sources, remote_name, destination, logdir, verbosity=0, retry=False) -> None:
         self._filename = filename
         self._top_level_sources = sources
         self._remote_name = remote_name
@@ -19,6 +19,7 @@ class BaseTracker(metaclass=ABCMeta):
         self._logdir = logdir
         self._verbosity = verbosity
         self._tracker = None
+        self._retry = retry
 
         signal.signal(signal.SIGINT, BaseTracker._sigint_handler)
         self._init_tracker()
@@ -88,6 +89,8 @@ class BaseTracker(metaclass=ABCMeta):
         else:
             logging.debug("%s doesn't exist, generating: %s", self._filename, str(self._top_level_sources))
             self._make_fresh_tracker()
+        if self._retry:
+            self.update_tracker_value("next", self.get_next_source_id(-1))
 
     def _load_from_disk(self):
         self._tracker = sqlite3.connect(database=self._filename)
@@ -122,7 +125,7 @@ class BaseTracker(metaclass=ABCMeta):
                 self._tracker.executemany("""
                     INSERT INTO tracker
                         ( key, value) VALUES ( ?, ? );
-                """, [("next", 0), ("failure_count", 0)])
+                """, ("next", 0))
 
                 self._tracker.executemany("""
                     INSERT INTO sources
@@ -140,7 +143,6 @@ class BaseTracker(metaclass=ABCMeta):
 
     def resume(self):
         source_id = self.get_tracker_value("next")
-        failure_count = self.get_tracker_value("failure_count")
 
         while (source := self.get_source_path(source_id)) and not self._interrupt_requested:
             source_path = source[0]
@@ -184,8 +186,6 @@ class BaseTracker(metaclass=ABCMeta):
                                 f"{exception.stderr=}\n"
                 logging.exception(error_message)
                 result["failure"] = self._bytes_to_str(exception.stderr)
-                failure_count += 1
-                self.update_tracker_value("failure_count", failure_count)
             finally:
                 next_source_id = self.get_next_source_id(source_id)
                 if next_source_id is not None:
@@ -195,13 +195,13 @@ class BaseTracker(metaclass=ABCMeta):
                 self.update_tracker_value("next", source_id)
                 self.update_source(result)
         else:
-            if not source and self.get_tracker_value("failure_count") == 0:
+            if (failure_count := self.get_failure_count()) == 0 and not source:
                 logging.info("Done rcloning %s", str(self._top_level_sources))
                 self._archive()
             else:
                 failures = self.get_failures()
                 logging.error("Failures: %d\n\n%s",
-                              self.get_tracker_value("failure_count"),
+                              failure_count,
                               failures,
                               )
 
@@ -269,5 +269,13 @@ class BaseTracker(metaclass=ABCMeta):
         return self._tracker.execute("""
             SELECT min(id)
             FROM sources
-            WHERE id > :id;
+            WHERE id > :id
+            AND done IS NULL;
         """, {"id": id}).fetchone()[0]
+
+    def get_failure_count(self):
+        return self._tracker.execute("""
+            SELECT count(id)
+            FROM sources
+            WHERE failure IS NOT NULL;
+        """).fetchone()[0]
