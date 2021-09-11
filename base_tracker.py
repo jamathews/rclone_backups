@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 import signal
@@ -76,11 +75,11 @@ class BaseTracker(metaclass=ABCMeta):
     def remote_name(self):
         return self._remote_name
 
-    def _archive_log(self):
+    def _archive(self):
         os.makedirs(self._logdir, exist_ok=True)
-        completed_log = os.path.join(self._logdir, f"{datetime.utcnow().isoformat()}-{os.path.basename(self._filename)}")
-        os.rename(self._filename, completed_log)
-        logging.info("Log saved as %s", completed_log)
+        completed_db = os.path.join(self._logdir, f"{datetime.utcnow().isoformat()}-{os.path.basename(self._filename)}")
+        os.rename(self._filename, completed_db)
+        logging.info("Completed db saved as %s", completed_db)
 
     def _init_tracker(self):
         if os.path.isfile(self._filename):
@@ -120,10 +119,10 @@ class BaseTracker(metaclass=ABCMeta):
                      );
                 """)
 
-                self._tracker.execute("""
+                self._tracker.executemany("""
                     INSERT INTO tracker
                         ( key, value) VALUES ( ?, ? );
-                """, ("next", 0))
+                """, [("next", 0), ("failure_count", 0)])
 
                 self._tracker.executemany("""
                     INSERT INTO sources
@@ -140,21 +139,10 @@ class BaseTracker(metaclass=ABCMeta):
         return detailed_sources
 
     def resume(self):
-        try:
-            tracker_next_record = self._tracker.execute("""
-                SELECT value FROM tracker WHERE key = :value;
-            """, {"value": "next"}).fetchone()
-            if tracker_next_record is None:
-                logging.critical("tracker_next_record is None")
-                raise RuntimeError("Data error: 'next' should always return exactly 1 record")
-            next_source = tracker_next_record[0]
-        except sqlite3.Error as exception:
-            logging.exception(exception)
-            raise RuntimeError("Unable to determine 'next' source")
-        source = self._tracker.execute("""
-            SELECT path FROM sources WHERE id = :id;
-        """, {"id": next_source}).fetchone()
-        while source and not self._interrupt_requested:
+        source_id = self.get_tracker_value("next")
+        failure_count = self.get_tracker_value("failure_count")
+
+        while (source := self.get_source_path(source_id)) and not self._interrupt_requested:
             source_path = source[0]
             logging.info(source_path)
             rclone_command = [
@@ -167,6 +155,7 @@ class BaseTracker(metaclass=ABCMeta):
                 rclone_command.append(f"-{'v' * self._verbosity}")
             logging.debug(" ".join(rclone_command))
             result = {
+                "id": source_id,
                 "done": None,
                 "args": None,
                 "command_line": None,
@@ -181,7 +170,7 @@ class BaseTracker(metaclass=ABCMeta):
                 logging.debug("stderr:\n" + self._bytes_to_str(rclone.stderr))
                 result["done"] = datetime.utcnow().isoformat()
                 if self._verbosity >= 2:
-                    result["args"] = rclone.args
+                    result["args"] = str(rclone.args)
                     result["command_line"] = " ".join(["'" + arg + "'" for arg in rclone.args])
                     result["returncode"] = rclone.returncode
                     result["stdout"] = self._bytes_to_str(rclone.stdout)
@@ -195,18 +184,82 @@ class BaseTracker(metaclass=ABCMeta):
                                 f"{exception.stderr=}\n"
                 logging.exception(error_message)
                 result["failure"] = self._bytes_to_str(exception.stderr)
-                self._tracker["failure_count"] = self._tracker.get("failure_count", 0) + 1
+                failure_count += 1
+                self.update_tracker_value("failure_count", failure_count)
             finally:
-                next_source += 1
-                self._tracker["next"] = next_source
-                self._save_to_disk()
+                next_source_id = self.get_next_source_id(source_id)
+                if next_source_id is not None:
+                    source_id = next_source_id
+                else:
+                    source_id += 1
+                self.update_tracker_value("next", source_id)
+                self.update_source(result)
         else:
-            if not source and self._tracker.get("failure_count", 0) == 0:
+            if not source and self.get_tracker_value("failure_count") == 0:
                 logging.info("Done rcloning %s", str(self._top_level_sources))
-                self._archive_log()
+                self._archive()
             else:
-                failures = [source for _, source in self._tracker["sources"].items() if source.get("failure") is not None]
+                failures = self.get_failures()
                 logging.error("Failures: %d\n\n%s",
-                              self._tracker.get("failure_count", 0),
-                              json.dumps(failures, indent=2),
+                              self.get_tracker_value("failure_count"),
+                              failures,
                               )
+
+    def get_source_path(self, id):
+        return self._tracker.execute("""
+            SELECT path FROM sources WHERE id = :id;
+        """, {"id": id}).fetchone()
+
+    def get_tracker_value(self, key_name):
+        try:
+            key_record = self._tracker.execute("""
+                SELECT value FROM tracker WHERE key = :key_name;
+            """, {"key_name": key_name}).fetchone()
+            if key_record is None:
+                logging.critical("No record for key = %s", key_name)
+                raise RuntimeError(f"Data error: '{key_name}' should always return exactly 1 record")
+        except sqlite3.Error as exception:
+            logging.exception(exception)
+            raise RuntimeError(f"Unable to determine '{key_name}' source")
+        return key_record[0]
+
+    def update_tracker_value(self, key_name, value):
+        try:
+            with self._tracker:
+                self._tracker.execute("""
+                    UPDATE tracker SET value = :value WHERE key = :key_name;
+                """, {"key_name": key_name, "value": value})
+        except sqlite3.Error as exception:
+            logging.exception(exception)
+            raise RuntimeError(f"Unable to update '{key_name}'")
+
+    def update_source(self, values):
+        try:
+            with self._tracker:
+                self._tracker.execute("""
+                    UPDATE sources
+                    SET
+                        done = :done, 
+                        args = :args, 
+                        command_line = :command_line, 
+                        returncode = :returncode, 
+                        stdout = :stdout, 
+                        stderr = :stderr, 
+                        failure = :failure
+                    WHERE id = :id;
+                """, values)
+        except sqlite3.Error as exception:
+            logging.exception(exception)
+            raise RuntimeError(f"Unable to update source with id={values['id']}")
+
+    def get_failures(self):
+        return self._tracker.execute("""
+            SELECT * FROM sources WHERE failure IS NOT NULL;
+        """, {"id": id}).fetchall()
+
+    def get_next_source_id(self, id):
+        return self._tracker.execute("""
+            SELECT min(id)
+            FROM sources
+            WHERE id > :id;
+        """, {"id": id}).fetchone()[0]
