@@ -207,13 +207,17 @@ class BaseTracker(metaclass=ABCMeta):
 
     def get_source_path(self, id):
         return self._tracker.execute("""
-            SELECT path FROM sources WHERE id = :id;
+            SELECT path
+            FROM sources
+            WHERE id = :id;
         """, {"id": id}).fetchone()
 
     def get_tracker_value(self, key_name):
         try:
             key_record = self._tracker.execute("""
-                SELECT value FROM tracker WHERE key = :key_name;
+                SELECT value
+                FROM tracker
+                WHERE key = :key_name;
             """, {"key_name": key_name}).fetchone()
             if key_record is None:
                 logging.critical("No record for key = %s", key_name)
@@ -227,7 +231,9 @@ class BaseTracker(metaclass=ABCMeta):
         try:
             with self._tracker:
                 self._tracker.execute("""
-                    UPDATE tracker SET value = :value WHERE key = :key_name;
+                    UPDATE tracker 
+                    SET value = :value 
+                    WHERE key = :key_name;
                 """, {"key_name": key_name, "value": value})
         except sqlite3.Error as exception:
             logging.exception(exception)
@@ -254,7 +260,9 @@ class BaseTracker(metaclass=ABCMeta):
 
     def get_failures(self):
         return self._tracker.execute("""
-            SELECT * FROM sources WHERE failure IS NOT NULL;
+            SELECT * 
+            FROM sources 
+            WHERE failure IS NOT NULL;
         """, {"id": id}).fetchall()
 
     def get_next_source_id(self, id):
