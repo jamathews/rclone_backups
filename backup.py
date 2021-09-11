@@ -37,6 +37,7 @@ def logging_setup(args):
     root_logger = logging.getLogger()
     root_logger.setLevel(level=log_level)
 
+    os.makedirs(args.logdir, exist_ok=True)
     file_handler = logging.FileHandler(filename=os.path.join(args.logdir, f"{datetime.utcnow().isoformat()}.log"))
     file_handler.setFormatter(fmt=log_formatter)
     file_handler.setLevel(log_level)
@@ -63,7 +64,7 @@ def command_line():
     parser.add_argument("-t", "--tracker",
                         help="progress tracking file to support resuming after interruption",
                         type=str,
-                        default="rclone_tracker.json",
+                        default="rclone_tracker.db.sqlite3",
                         )
     parser.add_argument("-d", "--destination",
                         help="For backups: the name given to the B2 bucket where backups will be stored. "

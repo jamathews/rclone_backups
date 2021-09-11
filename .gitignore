@@ -129,4 +129,5 @@ dmypy.json
 .pyre/
 
 logs/
-rclone_tracker.json
+rclone_tracker.db.sqlite3
+rclone_tracker_schema.dbs.bak
