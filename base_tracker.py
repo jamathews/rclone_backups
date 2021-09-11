@@ -122,7 +122,7 @@ class BaseTracker(metaclass=ABCMeta):
                      );
                 """)
 
-                self._tracker.executemany("""
+                self._tracker.execute("""
                     INSERT INTO tracker
                         ( key, value) VALUES ( ?, ? );
                 """, ("next", 0))
