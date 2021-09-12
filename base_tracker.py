@@ -96,7 +96,7 @@ class BaseTracker(metaclass=ABCMeta):
         self._tracker = sqlite3.connect(database=self._filename)
 
     def _make_fresh_tracker(self):
-        detailed_sources = self._populate_sources()
+        detailed_sources = map(lambda x: x.encode("utf-8", errors="backslashreplace"), self._populate_sources())
 
         self._tracker = sqlite3.connect(database=self._filename)
         try:
@@ -145,7 +145,7 @@ class BaseTracker(metaclass=ABCMeta):
         source_id = self.get_tracker_value("next")
 
         while (source := self.get_source_path(source_id)) and not self._interrupt_requested:
-            source_path = source[0]
+            source_path = source[0].decode("utf-8", errors="backslashreplace")
             logging.info(source_path)
             rclone_command = [
                 'rclone',
