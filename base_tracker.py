@@ -153,7 +153,7 @@ class BaseTracker(metaclass=ABCMeta):
                 f'{self.source_prefix}{source_path}',
                 f'{self.dest_prefix}{source_path}',
             ]
-            if self._verbosity:
+            if self._verbosity >= 1:
                 rclone_command.append(f"-{'v' * self._verbosity}")
             logging.debug(" ".join(rclone_command))
             result = {
