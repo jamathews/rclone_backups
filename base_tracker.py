@@ -96,6 +96,7 @@ class BaseTracker(metaclass=ABCMeta):
         self._tracker = sqlite3.connect(database=self._filename)
 
     def _make_fresh_tracker(self):
+        # TODO: do the table creation first, then _populate_sources() can be a separate thread, and resume() can start right away
         detailed_sources = map(lambda x: x.encode("utf-8", errors="backslashreplace"), self._populate_sources())
 
         self._tracker = sqlite3.connect(database=self._filename)
@@ -142,6 +143,7 @@ class BaseTracker(metaclass=ABCMeta):
         return detailed_sources
 
     def resume(self):
+        # TODO: make a thread-safe queue of source_paths, and a bunch of workers to process them async
         source_id = self.get_tracker_value("next")
 
         while (source := self.get_source_path(source_id)) and not self._interrupt_requested:
