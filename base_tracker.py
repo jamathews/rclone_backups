@@ -21,7 +21,8 @@ class BaseTracker(metaclass=ABCMeta):
         self._verbosity = verbosity
         self._tracker = None
         self._retry = retry
-        self._sleep_on_cap_exceeded = 300
+        self._sleep_on_cap_exceeded = None
+        self._reset_sleep()
 
         signal.signal(signal.SIGINT, BaseTracker._sigint_handler)
         self._init_tracker()
@@ -83,6 +84,9 @@ class BaseTracker(metaclass=ABCMeta):
     @property
     def remote_name(self):
         return self._remote_name
+
+    def _reset_sleep(self):
+        self._sleep_on_cap_exceeded = 300
 
     def _archive(self):
         os.makedirs(self._logdir, exist_ok=True)
@@ -202,6 +206,8 @@ class BaseTracker(metaclass=ABCMeta):
                                     f"Sleeping {sleep_seconds} seconds.\n"
                     logging.exception(error_message)
                     sleep(sleep_seconds)
+                else:
+                    self._reset_sleep()
                 result["failure"] = self._bytes_to_str(exception.stderr)
             finally:
                 next_source_id = self.get_next_source_id(source_id)
