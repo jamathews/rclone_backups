@@ -131,3 +131,6 @@ dmypy.json
 logs/
 rclone_tracker.db.sqlite3
 rclone_tracker_schema.dbs.bak
+rclone-backups.db.sqlite3.*
+.idea/
+**/.DS_Store

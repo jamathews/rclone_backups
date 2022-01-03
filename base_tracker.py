@@ -6,6 +6,7 @@ import subprocess
 import sys
 from abc import ABCMeta, abstractmethod
 from datetime import datetime
+from time import sleep
 
 
 class BaseTracker(metaclass=ABCMeta):
@@ -20,6 +21,7 @@ class BaseTracker(metaclass=ABCMeta):
         self._verbosity = verbosity
         self._tracker = None
         self._retry = retry
+        self._sleep_on_cap_exceeded = 300
 
         signal.signal(signal.SIGINT, BaseTracker._sigint_handler)
         self._init_tracker()
@@ -35,6 +37,12 @@ class BaseTracker(metaclass=ABCMeta):
     @abstractmethod
     def source_prefix(self):
         raise NotImplementedError
+
+    @property
+    def sleep_on_cap_exceeded(self):
+        seconds = self._sleep_on_cap_exceeded
+        self._sleep_on_cap_exceeded *= 2
+        return seconds
 
     @abstractmethod
     def populate_source(self, source):
@@ -187,6 +195,13 @@ class BaseTracker(metaclass=ABCMeta):
                                 f"{exception.stdout=}\n" \
                                 f"{exception.stderr=}\n"
                 logging.exception(error_message)
+                if b"transaction_cap_exceeded" in exception.stderr:
+                    sleep_seconds = self.sleep_on_cap_exceeded
+                    error_message = f"\n" \
+                                    f"Transaction Cap Exceeded. " \
+                                    f"Sleeping {sleep_seconds} seconds.\n"
+                    logging.exception(error_message)
+                    sleep(sleep_seconds)
                 result["failure"] = self._bytes_to_str(exception.stderr)
             finally:
                 next_source_id = self.get_next_source_id(source_id)
