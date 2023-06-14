@@ -133,4 +133,6 @@ rclone_tracker.db.sqlite3
 rclone_tracker_schema.dbs.bak
 rclone-backups.db.sqlite3.*
 .idea/
-**/.DS_Store
+**/.DS_Store.envrc
+db/
+.envrc
