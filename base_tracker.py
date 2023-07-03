@@ -11,6 +11,7 @@ from time import sleep
 
 class BaseTracker(metaclass=ABCMeta):
     _interrupt_requested = False
+    __MAX_SLEEP__ = 60 * 60
 
     def __init__(self, filename, sources, remote_name, destination, logdir, verbosity=0, retry=False) -> None:
         self._filename = filename
@@ -43,6 +44,9 @@ class BaseTracker(metaclass=ABCMeta):
     def sleep_on_cap_exceeded(self):
         seconds = self._sleep_on_cap_exceeded
         self._sleep_on_cap_exceeded *= 2
+        if self._sleep_on_cap_exceeded > self.__MAX_SLEEP__:
+            logging.debug("sleep time of %s is too big, capping at %s", self._sleep_on_cap_exceeded, self.__MAX_SLEEP__)
+            self._sleep_on_cap_exceeded = self.__MAX_SLEEP__
         return seconds
 
     @abstractmethod
@@ -192,9 +196,11 @@ class BaseTracker(metaclass=ABCMeta):
                     result["stdout"] = self._bytes_to_str(rclone.stdout)
                     result["stderr"] = self._bytes_to_str(rclone.stderr)
             except subprocess.CalledProcessError as exception:
+                runnable_cmd = " ".join([f'"{x}"' for x in exception.cmd])
                 error_message = f"\n" \
                                 f"{exception.returncode=}\n" \
                                 f"{exception.cmd=}\n" \
+                                f"{runnable_cmd=}\n" \
                                 f"{exception.output=}\n" \
                                 f"{exception.stdout=}\n" \
                                 f"{exception.stderr=}\n"
