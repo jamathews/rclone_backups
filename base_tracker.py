@@ -7,7 +7,7 @@ import sys
 import threading
 from abc import ABCMeta, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timezone
 from time import sleep
 
 
@@ -104,7 +104,7 @@ class BaseTracker(metaclass=ABCMeta):
 
     def _archive(self):
         os.makedirs(self._logdir, exist_ok=True)
-        completed_db = os.path.join(self._logdir, f"{datetime.utcnow().isoformat()}-{os.path.basename(self._filename)}")
+        completed_db = os.path.join(self._logdir, f"{datetime.now(timezone.utc).isoformat()}-{os.path.basename(self._filename)}")
         os.rename(self._filename, completed_db)
         logging.info("Completed db saved as %s", completed_db)
 
@@ -112,11 +112,31 @@ class BaseTracker(metaclass=ABCMeta):
         if os.path.isfile(self._filename):
             logging.debug("%s exists, we'll use that for tracking progress", self._filename)
             self._load_from_disk()
+            # Always reset 'next' to the first unfinished task to ensure robustness on resume
+            self.update_tracker_value("next", self.get_next_source_id(-1) or 0)
         else:
             logging.debug("%s doesn't exist, generating: %s", self._filename, str(self._top_level_sources))
             self._make_fresh_tracker()
+        
         if self._retry:
-            self.update_tracker_value("next", self.get_next_source_id(-1))
+            # Clear all failures if retry is requested
+            self._clear_failures()
+            self.update_tracker_value("next", self.get_next_source_id(-1) or 0)
+
+    def _clear_failures(self):
+        """Clears all failure information from the sources table."""
+        try:
+            with self._tracker_lock:
+                with self._tracker:
+                    self._tracker.execute("""
+                        UPDATE sources
+                        SET failure = NULL
+                        WHERE failure IS NOT NULL;
+                    """)
+            logging.info("Cleared existing failures from tracker database.")
+        except sqlite3.Error as exception:
+            logging.exception(exception)
+            raise RuntimeError("Unable to clear failures from tracker database")
 
     def _load_from_disk(self):
         self._tracker = sqlite3.connect(database=self._filename, check_same_thread=False)
@@ -204,17 +224,26 @@ class BaseTracker(metaclass=ABCMeta):
                 executor.submit(self._process_source, source_id, source)
 
         # After the pool shuts down, check for overall status
-        if (failure_count := self.get_failure_count()) == 0:
-            # Check if there are any remaining sources
-            if not self.get_source_path(self.get_tracker_value("next")):
+        failure_count = self.get_failure_count()
+        next_val = self.get_tracker_value("next")
+        has_more = self.get_source_path(next_val) is not None
+        
+        if failure_count == 0:
+            if not has_more:
                 logging.info("Done rcloning %s", str(self._top_level_sources))
                 self._archive()
+            else:
+                logging.info("Interrupted. Some sources are still pending.")
         else:
             failures = self.get_failures()
             logging.error("Failures: %d\n\n%s",
                           failure_count,
                           failures,
                           )
+            if not has_more:
+                logging.info("All sources processed, but some failed.")
+            else:
+                logging.info("Interrupted. Some sources failed and some are still pending.")
 
     def _process_source(self, source_id, source):
         """Processes a single source directory/file."""
@@ -251,7 +280,7 @@ class BaseTracker(metaclass=ABCMeta):
             rclone = subprocess.run(rclone_command, capture_output=True, check=True)
             logging.debug("stdout:\n" + self._bytes_to_str(rclone.stdout))
             logging.debug("stderr:\n" + self._bytes_to_str(rclone.stderr))
-            result["done"] = datetime.utcnow().isoformat()
+            result["done"] = datetime.now(timezone.utc).isoformat()
             if self._verbosity >= 2:
                 result["args"] = str(rclone.args)
                 result["command_line"] = " ".join(["'" + arg + "'" for arg in rclone.args])
