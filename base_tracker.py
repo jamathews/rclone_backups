@@ -4,16 +4,19 @@ import signal
 import sqlite3
 import subprocess
 import sys
+import threading
 from abc import ABCMeta, abstractmethod
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from time import sleep
 
 
 class BaseTracker(metaclass=ABCMeta):
     _interrupt_requested = False
+    _interrupt_lock = threading.Lock()
     __MAX_SLEEP__ = 60 * 60
 
-    def __init__(self, filename, sources, remote_name, destination, logdir, verbosity=0, retry=False) -> None:
+    def __init__(self, filename, sources, remote_name, destination, logdir, verbosity=0, retry=False, workers=4) -> None:
         self._filename = filename
         self._top_level_sources = sources
         self._remote_name = remote_name
@@ -21,14 +24,18 @@ class BaseTracker(metaclass=ABCMeta):
         self._logdir = logdir
         self._verbosity = verbosity
         self._tracker = None
+        self._tracker_lock = threading.Lock()
         self._retry = retry
+        self._workers = workers
         self._sleep_on_cap_exceeded = None
+        self._sleep_lock = threading.Lock()
         self._reset_sleep()
 
         signal.signal(signal.SIGINT, BaseTracker._sigint_handler)
         self._init_tracker()
-        if self._interrupt_requested:
-            sys.exit(1)
+        with self._interrupt_lock:
+            if self._interrupt_requested:
+                sys.exit(1)
 
     @property
     @abstractmethod
@@ -42,12 +49,13 @@ class BaseTracker(metaclass=ABCMeta):
 
     @property
     def sleep_on_cap_exceeded(self):
-        seconds = self._sleep_on_cap_exceeded
-        self._sleep_on_cap_exceeded *= 2
-        if self._sleep_on_cap_exceeded > self.__MAX_SLEEP__:
-            logging.debug("sleep time of %s is too big, capping at %s", self._sleep_on_cap_exceeded, self.__MAX_SLEEP__)
-            self._sleep_on_cap_exceeded = self.__MAX_SLEEP__
-        return seconds
+        with self._sleep_lock:
+            seconds = self._sleep_on_cap_exceeded
+            self._sleep_on_cap_exceeded *= 2
+            if self._sleep_on_cap_exceeded > self.__MAX_SLEEP__:
+                logging.debug("sleep time of %s is too big, capping at %s", self._sleep_on_cap_exceeded, self.__MAX_SLEEP__)
+                self._sleep_on_cap_exceeded = self.__MAX_SLEEP__
+            return seconds
 
     @abstractmethod
     def populate_source(self, source):
@@ -56,7 +64,8 @@ class BaseTracker(metaclass=ABCMeta):
     @staticmethod
     def _sigint_handler(sig, _):
         logging.debug("received signal %s", signal.Signals(sig).name)
-        BaseTracker._interrupt_requested = True
+        with BaseTracker._interrupt_lock:
+            BaseTracker._interrupt_requested = True
 
     @staticmethod
     def _bytes_to_str(message: bytes) -> str:
@@ -90,7 +99,8 @@ class BaseTracker(metaclass=ABCMeta):
         return self._remote_name
 
     def _reset_sleep(self):
-        self._sleep_on_cap_exceeded = 300
+        with self._sleep_lock:
+            self._sleep_on_cap_exceeded = 300
 
     def _archive(self):
         os.makedirs(self._logdir, exist_ok=True)
@@ -109,13 +119,13 @@ class BaseTracker(metaclass=ABCMeta):
             self.update_tracker_value("next", self.get_next_source_id(-1))
 
     def _load_from_disk(self):
-        self._tracker = sqlite3.connect(database=self._filename)
+        self._tracker = sqlite3.connect(database=self._filename, check_same_thread=False)
 
     def _make_fresh_tracker(self):
         # TODO: do the table creation first, then _populate_sources() can be a separate thread, and resume() can start right away
         detailed_sources = map(lambda x: x.encode("utf-8", errors="backslashreplace"), self._populate_sources())
 
-        self._tracker = sqlite3.connect(database=self._filename)
+        self._tracker = sqlite3.connect(database=self._filename, check_same_thread=False)
         try:
             with self._tracker:
                 self._tracker.execute("""
@@ -159,95 +169,134 @@ class BaseTracker(metaclass=ABCMeta):
         return detailed_sources
 
     def resume(self):
-        # TODO: make a thread-safe queue of source_paths, and a bunch of workers to process them async
-        source_id = self.get_tracker_value("next")
+        """
+        Resumes the backup/restore process using a thread pool to process sources in parallel.
+        It is safe to resume an existing backup run. The tracker database maintains the state
+        of which sources are completed.
+        """
+        # We use a ThreadPoolExecutor to run multiple rclone instances in parallel.
+        # This is safe to run on an existing backup database.
+        with ThreadPoolExecutor(max_workers=self._workers) as executor:
+            while True:
+                with self._interrupt_lock:
+                    if self._interrupt_requested:
+                        logging.info("Interrupt requested, waiting for active workers to finish...")
+                        break
 
-        while (source := self.get_source_path(source_id)) and not self._interrupt_requested:
-            source_path = source[0].decode("utf-8", errors="backslashreplace")
-            logging.info(source_path)
-            rclone_command = [
-                'rclone',
-                'copy',
-                f'{self.source_prefix}{source_path}',
-                f'{self.dest_prefix}{source_path}',
-            ]
-            if self._verbosity >= 1:
-                rclone_command.append(f"-{'v' * self._verbosity}")
-            logging.debug(" ".join(rclone_command))
-            result = {
-                "id": source_id,
-                "done": None,
-                "args": None,
-                "command_line": None,
-                "returncode": None,
-                "stdout": None,
-                "stderr": None,
-                "failure": None,
-            }
-            try:
-                rclone = subprocess.run(rclone_command, capture_output=True, check=True)
-                logging.debug("stdout:\n" + self._bytes_to_str(rclone.stdout))
-                logging.debug("stderr:\n" + self._bytes_to_str(rclone.stderr))
-                result["done"] = datetime.utcnow().isoformat()
-                if self._verbosity >= 2:
-                    result["args"] = str(rclone.args)
-                    result["command_line"] = " ".join(["'" + arg + "'" for arg in rclone.args])
-                    result["returncode"] = rclone.returncode
-                    result["stdout"] = self._bytes_to_str(rclone.stdout)
-                    result["stderr"] = self._bytes_to_str(rclone.stderr)
-            except subprocess.CalledProcessError as exception:
-                runnable_cmd = " ".join([f'"{x}"' for x in exception.cmd])
-                error_message = f"\n" \
-                                f"{exception.returncode=}\n" \
-                                f"{exception.cmd=}\n" \
-                                f"{runnable_cmd=}\n" \
-                                f"{exception.output=}\n" \
-                                f"{exception.stdout=}\n" \
-                                f"{exception.stderr=}\n"
-                logging.exception(error_message)
-                if b"transaction_cap_exceeded" in exception.stderr:
-                    sleep_seconds = self.sleep_on_cap_exceeded
-                    error_message = f"\n" \
-                                    f"Transaction Cap Exceeded. " \
-                                    f"Sleeping {sleep_seconds} seconds.\n"
-                    logging.exception(error_message)
-                    sleep(sleep_seconds)
-                else:
-                    self._reset_sleep()
-                result["failure"] = self._bytes_to_str(exception.stderr)
-            finally:
+                # Get the next available source that hasn't been completed yet.
+                # We do this one by one to avoid over-fetching if an interrupt occurs.
+                source_id = self.get_tracker_value("next")
+                source = self.get_source_path(source_id)
+
+                if not source:
+                    break
+
+                # Update 'next' immediately so other workers (if we were fetching in a loop)
+                # or future calls don't pick up the same ID.
                 next_source_id = self.get_next_source_id(source_id)
                 if next_source_id is not None:
-                    source_id = next_source_id
+                    self.update_tracker_value("next", next_source_id)
                 else:
-                    source_id += 1
-                self.update_tracker_value("next", source_id)
-                self.update_source(result)
-        else:
-            if (failure_count := self.get_failure_count()) == 0 and not source:
+                    # No more sources to process
+                    self.update_tracker_value("next", source_id + 1)
+
+                # Submit the task to the pool
+                executor.submit(self._process_source, source_id, source)
+
+        # After the pool shuts down, check for overall status
+        if (failure_count := self.get_failure_count()) == 0:
+            # Check if there are any remaining sources
+            if not self.get_source_path(self.get_tracker_value("next")):
                 logging.info("Done rcloning %s", str(self._top_level_sources))
                 self._archive()
+        else:
+            failures = self.get_failures()
+            logging.error("Failures: %d\n\n%s",
+                          failure_count,
+                          failures,
+                          )
+
+    def _process_source(self, source_id, source):
+        """Processes a single source directory/file."""
+        with self._interrupt_lock:
+            if self._interrupt_requested:
+                return
+
+        source_path = source[0].decode("utf-8", errors="backslashreplace")
+        logging.info(f"Processing: {source_path}")
+        
+        rclone_command = [
+            'rclone',
+            'copy',
+            f'{self.source_prefix}{source_path}',
+            f'{self.dest_prefix}{source_path}',
+        ]
+        if self._verbosity >= 1:
+            rclone_command.append(f"-{'v' * self._verbosity}")
+        
+        logging.debug(" ".join(rclone_command))
+        
+        result = {
+            "id": source_id,
+            "done": None,
+            "args": None,
+            "command_line": None,
+            "returncode": None,
+            "stdout": None,
+            "stderr": None,
+            "failure": None,
+        }
+        
+        try:
+            rclone = subprocess.run(rclone_command, capture_output=True, check=True)
+            logging.debug("stdout:\n" + self._bytes_to_str(rclone.stdout))
+            logging.debug("stderr:\n" + self._bytes_to_str(rclone.stderr))
+            result["done"] = datetime.utcnow().isoformat()
+            if self._verbosity >= 2:
+                result["args"] = str(rclone.args)
+                result["command_line"] = " ".join(["'" + arg + "'" for arg in rclone.args])
+                result["returncode"] = rclone.returncode
+                result["stdout"] = self._bytes_to_str(rclone.stdout)
+                result["stderr"] = self._bytes_to_str(rclone.stderr)
+        except subprocess.CalledProcessError as exception:
+            runnable_cmd = " ".join([f'"{x}"' for x in exception.cmd])
+            error_message = f"\n" \
+                            f"{exception.returncode=}\n" \
+                            f"{exception.cmd=}\n" \
+                            f"{runnable_cmd=}\n" \
+                            f"{exception.output=}\n" \
+                            f"{exception.stdout=}\n" \
+                            f"{exception.stderr=}\n"
+            logging.exception(error_message)
+            if b"transaction_cap_exceeded" in exception.stderr:
+                sleep_seconds = self.sleep_on_cap_exceeded
+                error_message = f"\n" \
+                                f"Transaction Cap Exceeded. " \
+                                f"Sleeping {sleep_seconds} seconds.\n"
+                logging.exception(error_message)
+                sleep(sleep_seconds)
             else:
-                failures = self.get_failures()
-                logging.error("Failures: %d\n\n%s",
-                              failure_count,
-                              failures,
-                              )
+                self._reset_sleep()
+            result["failure"] = self._bytes_to_str(exception.stderr)
+        finally:
+            self.update_source(result)
 
     def get_source_path(self, id):
-        return self._tracker.execute("""
-            SELECT path
-            FROM sources
-            WHERE id = :id;
-        """, {"id": id}).fetchone()
+        with self._tracker_lock:
+            return self._tracker.execute("""
+                SELECT path
+                FROM sources
+                WHERE id = :id;
+            """, {"id": id}).fetchone()
 
     def get_tracker_value(self, key_name):
         try:
-            key_record = self._tracker.execute("""
-                SELECT value
-                FROM tracker
-                WHERE key = :key_name;
-            """, {"key_name": key_name}).fetchone()
+            with self._tracker_lock:
+                key_record = self._tracker.execute("""
+                    SELECT value
+                    FROM tracker
+                    WHERE key = :key_name;
+                """, {"key_name": key_name}).fetchone()
             if key_record is None:
                 logging.critical("No record for key = %s", key_name)
                 raise RuntimeError(f"Data error: '{key_name}' should always return exactly 1 record")
@@ -258,53 +307,58 @@ class BaseTracker(metaclass=ABCMeta):
 
     def update_tracker_value(self, key_name, value):
         try:
-            with self._tracker:
-                self._tracker.execute("""
-                    UPDATE tracker 
-                    SET value = :value 
-                    WHERE key = :key_name;
-                """, {"key_name": key_name, "value": value})
+            with self._tracker_lock:
+                with self._tracker:
+                    self._tracker.execute("""
+                        UPDATE tracker 
+                        SET value = :value 
+                        WHERE key = :key_name;
+                    """, {"key_name": key_name, "value": value})
         except sqlite3.Error as exception:
             logging.exception(exception)
             raise RuntimeError(f"Unable to update '{key_name}'")
 
     def update_source(self, values):
         try:
-            with self._tracker:
-                self._tracker.execute("""
-                    UPDATE sources
-                    SET
-                        done = :done, 
-                        args = :args, 
-                        command_line = :command_line, 
-                        returncode = :returncode, 
-                        stdout = :stdout, 
-                        stderr = :stderr, 
-                        failure = :failure
-                    WHERE id = :id;
-                """, values)
+            with self._tracker_lock:
+                with self._tracker:
+                    self._tracker.execute("""
+                        UPDATE sources
+                        SET
+                            done = :done, 
+                            args = :args, 
+                            command_line = :command_line, 
+                            returncode = :returncode, 
+                            stdout = :stdout, 
+                            stderr = :stderr, 
+                            failure = :failure
+                        WHERE id = :id;
+                    """, values)
         except sqlite3.Error as exception:
             logging.exception(exception)
             raise RuntimeError(f"Unable to update source with id={values['id']}")
 
     def get_failures(self):
-        return self._tracker.execute("""
-            SELECT * 
-            FROM sources 
-            WHERE failure IS NOT NULL;
-        """, {"id": id}).fetchall()
+        with self._tracker_lock:
+            return self._tracker.execute("""
+                SELECT * 
+                FROM sources 
+                WHERE failure IS NOT NULL;
+            """).fetchall()
 
     def get_next_source_id(self, id):
-        return self._tracker.execute("""
-            SELECT min(id)
-            FROM sources
-            WHERE id > :id
-            AND done IS NULL;
-        """, {"id": id}).fetchone()[0]
+        with self._tracker_lock:
+            return self._tracker.execute("""
+                SELECT min(id)
+                FROM sources
+                WHERE id > :id
+                AND done IS NULL;
+            """, {"id": id}).fetchone()[0]
 
     def get_failure_count(self):
-        return self._tracker.execute("""
-            SELECT count(id)
-            FROM sources
-            WHERE failure IS NOT NULL;
-        """).fetchone()[0]
+        with self._tracker_lock:
+            return self._tracker.execute("""
+                SELECT count(id)
+                FROM sources
+                WHERE failure IS NOT NULL;
+            """).fetchone()[0]

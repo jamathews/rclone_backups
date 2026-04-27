@@ -33,7 +33,7 @@ class UndefinedAction(Exception):
 
 def logging_setup(args):
     log_level = verbosity_to_log_level(args.verbose)
-    log_formatter = logging.Formatter(fmt='%(asctime)s - %(threadName)s - %(name)s - %(levelname)s - %(message)s')
+    log_formatter = logging.Formatter(fmt='%(asctime)s - %(threadName)s (%(thread)d) - %(name)s - %(levelname)s - %(message)s')
     root_logger = logging.getLogger()
     root_logger.setLevel(level=log_level)
 
@@ -99,6 +99,11 @@ def command_line():
                         default=[os.getcwd()],
                         required=True,
                         )
+    parser.add_argument("-w", "--workers",
+                        help="Number of parallel workers for processing sources",
+                        type=int,
+                        default=4,
+                        )
     args = parser.parse_args()
     return args
 
@@ -121,6 +126,7 @@ def main():
                             logdir=args.logdir,
                             verbosity=(args.verbose - 2),
                             retry=args.retry,
+                            workers=args.workers,
                             )
     tracker.resume()
 
