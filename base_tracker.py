@@ -16,7 +16,7 @@ class BaseTracker(metaclass=ABCMeta):
     _interrupt_lock = threading.Lock()
     __MAX_SLEEP__ = 60 * 60
 
-    def __init__(self, filename, sources, remote_name, destination, logdir, verbosity=0, retry=False, workers=4) -> None:
+    def __init__(self, filename, sources, remote_name, destination, logdir, verbosity=0, retry=False, workers=4, depth=None) -> None:
         self._filename = filename
         self._top_level_sources = sources
         self._remote_name = remote_name
@@ -27,6 +27,7 @@ class BaseTracker(metaclass=ABCMeta):
         self._tracker_lock = threading.Lock()
         self._retry = retry
         self._workers = workers
+        self._depth = depth
         self._sleep_on_cap_exceeded = None
         self._sleep_lock = threading.Lock()
         self._reset_sleep()

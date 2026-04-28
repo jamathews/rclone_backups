@@ -104,6 +104,11 @@ def command_line():
                         type=int,
                         default=4,
                         )
+    parser.add_argument("-D", "--depth",
+                        help="Maximum depth of subfolders to crawl for tracking. 0 means top-level folders only.",
+                        type=int,
+                        default=None,
+                        )
     args = parser.parse_args()
     return args
 
@@ -127,6 +132,7 @@ def main():
                             verbosity=(args.verbose - 2),
                             retry=args.retry,
                             workers=args.workers,
+                            depth=args.depth,
                             )
     tracker.resume()
 
