@@ -38,7 +38,7 @@ def logging_setup(args):
     root_logger.setLevel(level=log_level)
 
     os.makedirs(args.logdir, exist_ok=True)
-    file_handler = logging.FileHandler(filename=os.path.join(args.logdir, f"{datetime.now(timezone.utc).isoformat()}.log"))
+    file_handler = logging.FileHandler(filename=os.path.join(args.logdir, f"{datetime.now(timezone.utc).isoformat().replace(':','-')}.log"))
     file_handler.setFormatter(fmt=log_formatter)
     file_handler.setLevel(log_level)
     root_logger.addHandler(file_handler)
