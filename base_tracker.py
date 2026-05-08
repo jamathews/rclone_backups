@@ -298,7 +298,11 @@ class BaseTracker(metaclass=ABCMeta):
                             f"{exception.stdout=}\n" \
                             f"{exception.stderr=}\n"
             logging.exception(error_message)
-            if b"transaction_cap_exceeded" in exception.stderr:
+            cap_error_strings = [
+                b'storage_cap_exceeded',
+                b"transaction_cap_exceeded",
+            ]
+            if any(error_string in exception.stderr for error_string in cap_error_strings):
                 sleep_seconds = self.sleep_on_cap_exceeded
                 error_message = f"\n" \
                                 f"Transaction Cap Exceeded. " \
