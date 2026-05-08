@@ -305,7 +305,7 @@ class BaseTracker(metaclass=ABCMeta):
             if any(error_string in exception.stderr for error_string in cap_error_strings):
                 sleep_seconds = self.sleep_on_cap_exceeded
                 error_message = f"\n" \
-                                f"Transaction Cap Exceeded. " \
+                                f"Cap Exceeded. " \
                                 f"Sleeping {sleep_seconds} seconds.\n"
                 logging.exception(error_message)
                 sleep(sleep_seconds)
